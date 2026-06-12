@@ -5,6 +5,7 @@ import { DialogProvider } from './components/Dialog';
 import { DnDProvider } from './components/DnDContext';
 import { DropHighlightProvider } from './components/DropHighlightContext';
 import { ElementEditorProvider } from './components/ElementEditorContext';
+import { FlowTraceProvider } from './components/FlowTraceContext';
 import { WireframeEditorProvider } from './components/wireframe/WireframeEditorContext';
 
 export default function App() {
@@ -15,11 +16,13 @@ export default function App() {
           <ContextsProvider>
             <WireframeEditorProvider>
               <ElementEditorProvider>
-                <DnDProvider>
-                  <DropHighlightProvider>
-                    <Board />
-                  </DropHighlightProvider>
-                </DnDProvider>
+                <FlowTraceProvider>
+                  <DnDProvider>
+                    <DropHighlightProvider>
+                      <Board />
+                    </DropHighlightProvider>
+                  </DnDProvider>
+                </FlowTraceProvider>
               </ElementEditorProvider>
             </WireframeEditorProvider>
           </ContextsProvider>

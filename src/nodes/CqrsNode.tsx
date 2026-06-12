@@ -1,11 +1,12 @@
 import { memo, useLayoutEffect, useRef, useState } from 'react';
 import { Handle, Position, useReactFlow, type NodeProps } from '@xyflow/react';
-import { LayoutTemplate, Pencil, X } from 'lucide-react';
+import { LayoutTemplate, Pencil, Play, Square, X } from 'lucide-react';
 import type { BoardNode } from '../types';
 import { ELEMENT_STYLES, SLOTTED_NODE_HEIGHT, isCqrsKind } from '../types';
 import WireframePreview from '../components/wireframe/WireframePreview';
 import { contextTagClass, contextsOf } from '../lib/contexts';
 import { useBoardContexts } from '../components/ContextsContext';
+import { useFlowTrace, useTracedNodes } from '../components/FlowTraceContext';
 import { useDimmedNodes } from '../components/HighlightDimContext';
 import { useOpenElementEditor } from '../components/ElementEditorContext';
 import { useOpenWireframeEditor } from '../components/wireframe/WireframeEditorContext';
@@ -50,6 +51,12 @@ function CqrsNode({ id, type, data, selected, parentId, dragging }: NodeProps<Bo
   const eventContexts = isEvent ? contextsOf(data) : [];
   const showTags = isEvent && boardContexts.length >= 2;
   const dimmed = useDimmedNodes().has(id);
+
+  // Flow trace: every kind except read models can play a trace from itself;
+  // any card inside the active trace pulses.
+  const { originId, toggleTrace } = useFlowTrace();
+  const isTraceOrigin = originId === id;
+  const pulsing = useTracedNodes().has(id);
 
   // Inside a slice the footprint is pinned to the cell height; the card overlay
   // expands over the grid while hovered or selected (but not mid-drag, so the
@@ -115,7 +122,7 @@ function CqrsNode({ id, type, data, selected, parentId, dragging }: NodeProps<Bo
       <div
         className={`relative flex w-full flex-col rounded-lg border-2 shadow-lg shadow-black/40 transition-shadow ${style.card} ${
           selected ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-950' : ''
-        } ${slotted ? `absolute inset-x-0 top-0 ${cardSize}` : ''}`}
+        } ${slotted ? `absolute inset-x-0 top-0 ${cardSize}` : ''} ${pulsing ? 'flow-trace-pulse' : ''}`}
       >
         <div
           ref={headerRef}
@@ -125,9 +132,23 @@ function CqrsNode({ id, type, data, selected, parentId, dragging }: NodeProps<Bo
           <span>{style.title}</span>
           <span
             className={`ml-auto flex items-center gap-0.5 transition-opacity ${
-              selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+              selected || isTraceOrigin ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
             }`}
           >
+            {type !== 'readmodel' && (
+              <button
+                type="button"
+                title={isTraceOrigin ? 'Stop data flow' : 'Play data flow'}
+                aria-label={isTraceOrigin ? 'Stop data flow' : 'Play data flow'}
+                className="nodrag rounded p-0.5 hover:bg-black/20"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleTrace(id);
+                }}
+              >
+                {isTraceOrigin ? <Square size={12} /> : <Play size={12} />}
+              </button>
+            )}
             <button
               type="button"
               title="Edit element"

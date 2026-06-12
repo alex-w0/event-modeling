@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, type ChangeEvent, type DragEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, type ChangeEvent, type DragEvent } from 'react';
 import {
   Background,
   BackgroundVariant,
@@ -25,11 +25,12 @@ import { useBoardContexts } from './components/ContextsContext';
 import { useDnD } from './components/DnDContext';
 import { useDialog } from './components/Dialog';
 import { useSetDropHighlight, type CellHighlight } from './components/DropHighlightContext';
+import { TracedNodesProvider, useFlowTrace } from './components/FlowTraceContext';
 import { HighlightDimProvider } from './components/HighlightDimContext';
 import { nodeTypes } from './nodes';
 import { downloadBoard, parseBoardFile } from './lib/serialization';
 import { DEFAULT_CONTEXT } from './lib/contexts';
-import { computeDimmedIds } from './lib/highlight';
+import { computeDimmedIds, computeDownstream } from './lib/highlight';
 import { nextId } from './lib/id';
 import {
   cellAt,
@@ -93,23 +94,44 @@ export default function Board() {
   /** Positions at drag start, so a drop on an occupied cell can revert. */
   const dragOrigins = useRef(new Map<string, XYPosition>());
 
-  // Context highlighting: dim inactive events plus every element whose flow
-  // is only reachable through them; arrows fade with their dimmed endpoints.
+  // Flow trace (play button): the origin plus everything downstream pulses,
+  // traced arrows animate, and the rest of the board is spotlight-dimmed.
+  // Clears itself if the origin gets deleted.
+  const { originId, stopTrace } = useFlowTrace();
+  const tracedIds = useMemo(
+    () => (originId !== null ? computeDownstream(edges, originId) : new Set<string>()),
+    [edges, originId],
+  );
+  useEffect(() => {
+    if (originId !== null && !nodes.some((node) => node.id === originId)) stopTrace();
+  }, [originId, nodes, stopTrace]);
+
+  // Dimming: an active flow trace spotlights its nodes (superseding context
+  // highlighting); otherwise dim inactive events plus every element whose
+  // flow is only reachable through them. Arrows fade with dimmed endpoints.
   // Selected edges swap to a white arrowhead to match their white stroke
   // (set in index.css) — CSS can't recolor SVG marker definitions.
-  const dimmedIds = useMemo(() => computeDimmedIds(nodes, edges, activeContexts), [nodes, edges, activeContexts]);
+  const dimmedIds = useMemo(
+    () =>
+      originId !== null
+        ? new Set(nodes.filter((node) => node.type !== 'slice' && !tracedIds.has(node.id)).map((node) => node.id))
+        : computeDimmedIds(nodes, edges, activeContexts),
+    [originId, tracedIds, nodes, edges, activeContexts],
+  );
   const displayEdges = useMemo(
     () =>
       edges.map((edge) => {
-        const dim = dimmedIds.has(edge.source) || dimmedIds.has(edge.target);
-        if (!dim && !edge.selected) return edge;
+        const traced = originId !== null && tracedIds.has(edge.source);
+        const dim = !traced && (dimmedIds.has(edge.source) || dimmedIds.has(edge.target));
+        if (!traced && !dim && !edge.selected) return edge;
         return {
           ...edge,
+          ...(traced ? { animated: true, className: 'trace-edge' } : {}),
           ...(dim ? { className: 'dimmed-edge' } : {}),
           ...(edge.selected ? { markerEnd: edgeMarker('#f8fafc') } : {}),
         };
       }),
-    [edges, dimmedIds],
+    [edges, dimmedIds, tracedIds, originId],
   );
 
   /** The cell (if any) under a drag at `center`, flagged invalid when already occupied. */
@@ -400,62 +422,64 @@ export default function Board() {
 
   return (
     <HighlightDimProvider value={dimmedIds}>
-      <ReactFlow<BoardNode, BoardEdge>
-        nodes={nodes}
-        edges={displayEdges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        onReconnect={onReconnect}
-        onNodeDragStart={onNodeDragStart}
-        onNodeDrag={onNodeDrag}
-        onNodeDragStop={onNodeDragStop}
-        onDrop={onDrop}
-        onDragOver={onDragOver}
-        onDragLeave={onDragLeave}
-        nodeTypes={nodeTypes}
-        defaultEdgeOptions={defaultEdgeOptions}
-        connectionLineType={ConnectionLineType.SmoothStep}
-        connectionMode={ConnectionMode.Loose}
-        connectionRadius={28}
-        isValidConnection={(connection) => connection.source !== connection.target}
-        deleteKeyCode={['Backspace', 'Delete']}
-        // Fixed layering: slices (-1) < edges (0) < element cards (0, painted
-        // after edges). React Flow's automatic elevation would lift edges
-        // touching selected or slice-contained nodes above other cards;
-        // selection/hover elevation for cards is done in CSS instead.
-        zIndexMode="manual"
-        colorMode="dark"
-        fitView
-        fitViewOptions={{ padding: 0.25 }}
-        minZoom={0.15}
-        maxZoom={2.5}
-        className="bg-slate-950"
-      >
-        <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="#293548" />
-        <MiniMap
-          pannable
-          zoomable
-          position="bottom-right"
-          className="!bg-slate-900"
-          maskColor="rgb(2 6 23 / 0.7)"
-          nodeColor={(node) => MINIMAP_COLORS[node.type ?? ''] ?? SLICE_ACCENT}
-          nodeStrokeColor={(node) => (isCqrsKind(node.type) ? 'transparent' : '#475569')}
-        />
-        <Panel position="top-left">
-          <Palette onAdd={onPaletteAdd} />
-        </Panel>
-        <Panel position="top-center">
-          <Toolbar onExport={onExport} onImport={onImportClick} onClear={onClear} />
-        </Panel>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".json,application/json"
-          className="hidden"
-          onChange={onImportFile}
-        />
-      </ReactFlow>
+      <TracedNodesProvider value={tracedIds}>
+        <ReactFlow<BoardNode, BoardEdge>
+          nodes={nodes}
+          edges={displayEdges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onReconnect={onReconnect}
+          onNodeDragStart={onNodeDragStart}
+          onNodeDrag={onNodeDrag}
+          onNodeDragStop={onNodeDragStop}
+          onDrop={onDrop}
+          onDragOver={onDragOver}
+          onDragLeave={onDragLeave}
+          nodeTypes={nodeTypes}
+          defaultEdgeOptions={defaultEdgeOptions}
+          connectionLineType={ConnectionLineType.SmoothStep}
+          connectionMode={ConnectionMode.Loose}
+          connectionRadius={28}
+          isValidConnection={(connection) => connection.source !== connection.target}
+          deleteKeyCode={['Backspace', 'Delete']}
+          // Fixed layering: slices (-1) < edges (0) < element cards (0, painted
+          // after edges). React Flow's automatic elevation would lift edges
+          // touching selected or slice-contained nodes above other cards;
+          // selection/hover elevation for cards is done in CSS instead.
+          zIndexMode="manual"
+          colorMode="dark"
+          fitView
+          fitViewOptions={{ padding: 0.25 }}
+          minZoom={0.15}
+          maxZoom={2.5}
+          className="bg-slate-950"
+        >
+          <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="#293548" />
+          <MiniMap
+            pannable
+            zoomable
+            position="bottom-right"
+            className="!bg-slate-900"
+            maskColor="rgb(2 6 23 / 0.7)"
+            nodeColor={(node) => MINIMAP_COLORS[node.type ?? ''] ?? SLICE_ACCENT}
+            nodeStrokeColor={(node) => (isCqrsKind(node.type) ? 'transparent' : '#475569')}
+          />
+          <Panel position="top-left">
+            <Palette onAdd={onPaletteAdd} />
+          </Panel>
+          <Panel position="top-center">
+            <Toolbar onExport={onExport} onImport={onImportClick} onClear={onClear} />
+          </Panel>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={onImportFile}
+          />
+        </ReactFlow>
+      </TracedNodesProvider>
     </HighlightDimProvider>
   );
 }

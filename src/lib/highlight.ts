@@ -11,6 +11,31 @@ import { contextsOf } from './contexts';
  * none of them keep it active; elements with no event anywhere in their flow
  * are exempt. Slices are never dimmed (edges never touch them).
  */
+/**
+ * The flow-trace set: the origin plus everything downstream of it, following
+ * edge direction through every node kind. Used by the play button to show
+ * how data flows through the system from a chosen element onward.
+ */
+export function computeDownstream(edges: BoardEdge[], originId: string): Set<string> {
+  const forward = new Map<string, string[]>();
+  for (const edge of edges) {
+    const list = forward.get(edge.source);
+    if (list) list.push(edge.target);
+    else forward.set(edge.source, [edge.target]);
+  }
+  const reached = new Set([originId]);
+  const queue = [originId];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const next of forward.get(current) ?? []) {
+      if (reached.has(next)) continue;
+      reached.add(next);
+      queue.push(next);
+    }
+  }
+  return reached;
+}
+
 export function computeDimmedIds(
   nodes: BoardNode[],
   edges: BoardEdge[],
