@@ -64,6 +64,26 @@ function edgeMarker(color: string): EdgeMarker {
   return { type: MarkerType.ArrowClosed, width: 16, height: 16, color };
 }
 
+function sameIds(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const id of a) if (!b.has(id)) return false;
+  return true;
+}
+
+/**
+ * Returns a referentially-stable Set: the previous instance is kept whenever
+ * the new one holds the same ids. Dragging a node rebuilds the `nodes` array
+ * every frame, which makes the dimming/trace memos recompute equal-but-new
+ * Sets each frame; without this, those new references would re-render every
+ * card and edge on every drag tick (the providers and edge styling key off
+ * them). Stabilizing identity lets a position-only change skip all that.
+ */
+function useStableIds(ids: ReadonlySet<string>): ReadonlySet<string> {
+  const ref = useRef(ids);
+  if (ref.current !== ids && !sameIds(ref.current, ids)) ref.current = ids;
+  return ref.current;
+}
+
 const defaultEdgeOptions: DefaultEdgeOptions = {
   type: 'smoothstep',
   markerEnd: edgeMarker(EDGE_NEUTRAL),
@@ -107,13 +127,14 @@ export default function Board() {
   // Nodes dimmed by the active context highlighting (empty when none active).
   // A flow trace is constrained to these: it never revives or flows through a
   // node the active contexts have dimmed.
-  const contextDimmedIds = useMemo(
-    () => computeDimmedIds(nodes, edges, activeContexts),
-    [nodes, edges, activeContexts],
+  const contextDimmedIds = useStableIds(
+    useMemo(() => computeDimmedIds(nodes, edges, activeContexts), [nodes, edges, activeContexts]),
   );
-  const tracedIds = useMemo(
-    () => (originId !== null ? computeDownstream(edges, originId, contextDimmedIds) : new Set<string>()),
-    [edges, originId, contextDimmedIds],
+  const tracedIds = useStableIds(
+    useMemo(
+      () => (originId !== null ? computeDownstream(edges, originId, contextDimmedIds) : new Set<string>()),
+      [edges, originId, contextDimmedIds],
+    ),
   );
   useEffect(() => {
     if (originId !== null && !nodes.some((node) => node.id === originId)) stopTrace();
@@ -136,12 +157,14 @@ export default function Board() {
   // them. Arrows fade with dimmed endpoints. Selected edges swap to a white
   // arrowhead to match their white stroke (set in index.css) — CSS can't
   // recolor SVG marker definitions.
-  const dimmedIds = useMemo(
-    () =>
-      originId !== null
-        ? new Set(nodes.filter((node) => node.type !== 'slice' && !tracedIds.has(node.id)).map((node) => node.id))
-        : contextDimmedIds,
-    [originId, tracedIds, nodes, contextDimmedIds],
+  const dimmedIds = useStableIds(
+    useMemo(
+      () =>
+        originId !== null
+          ? new Set(nodes.filter((node) => node.type !== 'slice' && !tracedIds.has(node.id)).map((node) => node.id))
+          : contextDimmedIds,
+      [originId, tracedIds, nodes, contextDimmedIds],
+    ),
   );
   const displayEdges = useMemo(
     () =>
