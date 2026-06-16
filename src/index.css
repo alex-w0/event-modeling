@@ -107,6 +107,25 @@ body,
   z-index: 1001 !important;
 }
 
+/*
+ * Rubber-band selection (selectionOnDrag): the pane shows a crosshair to hint
+ * that a drag selects, and the drawn rectangle uses the app's indigo accent.
+ * Space + drag flips panActivationKeyCode on, which React Flow signals by
+ * adding `.dragging` to the pane — restore the grab cursor then.
+ */
+.react-flow__pane {
+  cursor: crosshair;
+}
+
+.react-flow__pane.dragging {
+  cursor: grabbing;
+}
+
+.react-flow__selection {
+  background: rgb(129 140 248 / 0.12);
+  border: 1px solid rgb(129 140 248 / 0.8);
+}
+
 .react-flow__connectionline path {
   stroke: #94a3b8;
   stroke-width: 1.75;

@@ -8,6 +8,7 @@ import {
   MiniMap,
   Panel,
   ReactFlow,
+  SelectionMode,
   addEdge,
   reconnectEdge,
   useEdgesState,
@@ -471,6 +472,15 @@ export default function Board() {
           connectionRadius={28}
           isValidConnection={(connection) => connection.source !== connection.target}
           deleteKeyCode={['Backspace', 'Delete']}
+          // Figma/Miro-style canvas interaction: a left-drag starting on empty
+          // canvas (never on a node) rubber-band selects everything it touches;
+          // the selection can then be moved together or deleted. Panning moves
+          // to the middle/right mouse button, scroll, or holding Space + drag.
+          selectionOnDrag
+          selectionMode={SelectionMode.Partial}
+          panOnDrag={[1, 2]}
+          panOnScroll
+          panActivationKeyCode="Space"
           // Fixed layering: slices (-1) < edges (0) < element cards (0, painted
           // after edges). React Flow's automatic elevation would lift edges
           // touching selected or slice-contained nodes above other cards;
