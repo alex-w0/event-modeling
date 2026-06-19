@@ -1,5 +1,16 @@
 import type { ReactFlowJsonObject, Viewport } from '@xyflow/react';
-import type { BoardNode, BoardEdge, CqrsKind, GwtData, GwtItem, Wireframe, WireframeElement, WireframeStroke } from '../types';
+import type {
+  Attribute,
+  BoardNode,
+  BoardEdge,
+  CqrsKind,
+  CustomType,
+  GwtData,
+  GwtItem,
+  Wireframe,
+  WireframeElement,
+  WireframeStroke,
+} from '../types';
 import {
   DEFAULT_COLUMNS,
   DEFAULT_LANES,
@@ -7,10 +18,12 @@ import {
   WIREFRAME_HEIGHT,
   WIREFRAME_WIDTH,
   buildGwtSections,
+  isAttributeKind,
   isCqrsKind,
   isMeaningfulGwtItem,
 } from '../types';
 import { DEFAULT_CONTEXT, sanitizeBoardContexts } from './contexts';
+import { sanitizeAttributes, sanitizeCustomTypes } from './schema';
 import { sliceHeight, sliceWidth } from './grid';
 
 const WIREFRAME_KINDS = new Set(['button', 'input', 'image', 'checkbox', 'heading', 'text', 'rect']);
@@ -105,11 +118,17 @@ export interface ParsedBoard {
   viewport: Viewport | null;
   /** Board-level DCB context list; always non-empty with the default context first. */
   contexts: string[];
+  /** Reusable custom object types referenced by element attributes. */
+  customTypes: CustomType[];
 }
 
-/** Serializes the full flow (nodes, edges, viewport, contexts) and triggers a browser download. */
-export function downloadBoard(flow: ReactFlowJsonObject<BoardNode, BoardEdge>, contexts: string[]): void {
-  const json = JSON.stringify({ ...flow, contexts }, null, 2);
+/** Serializes the full flow (nodes, edges, viewport, contexts, types) and triggers a browser download. */
+export function downloadBoard(
+  flow: ReactFlowJsonObject<BoardNode, BoardEdge>,
+  contexts: string[],
+  customTypes: CustomType[],
+): void {
+  const json = JSON.stringify({ ...flow, contexts, customTypes }, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
@@ -146,6 +165,10 @@ export function parseBoardFile(raw: string): ParsedBoard {
   const contexts = sanitizeBoardContexts((parsed as Record<string, unknown>).contexts);
   const contextSet = new Set(contexts);
 
+  // Type registry: pre-feature exports have no key — custom types fall back to
+  // empty. Primitives are a fixed built-in set, so they aren't persisted.
+  const customTypes = sanitizeCustomTypes((parsed as Record<string, unknown>).customTypes);
+
   const nodes: BoardNode[] = [];
   for (const node of flow.nodes) {
     if (
@@ -181,7 +204,14 @@ export function parseBoardFile(raw: string): ParsedBoard {
         zIndex: -1,
       });
     } else if (isCqrsKind(node.type)) {
-      const content = typeof node.data?.content === 'string' && node.data.content.trim() ? node.data.content : undefined;
+      // Free-text note: read the current `note` key, falling back to the legacy
+      // `content` key so pre-rename exports keep their text.
+      const rawData = (node.data ?? {}) as Record<string, unknown>;
+      const noteValue = typeof rawData.note === 'string' ? rawData.note : rawData.content;
+      const note = typeof noteValue === 'string' && noteValue.trim() ? noteValue : undefined;
+      const attributes: Attribute[] | undefined = isAttributeKind(node.type)
+        ? sanitizeAttributes(rawData.attributes)
+        : undefined;
       const wireframe = node.type === 'screen' ? sanitizeWireframe(node.data?.wireframe) : undefined;
       const gwt = node.type === 'gwt' ? sanitizeGwt(node.data?.gwt) : undefined;
       // Events keep only context references that exist in the board list. A
@@ -202,7 +232,7 @@ export function parseBoardFile(raw: string): ParsedBoard {
         ...node,
         extent: undefined,
         zIndex: undefined,
-        data: { label, content, wireframe, contexts: nodeContexts, gwt },
+        data: { label, note, attributes, wireframe, contexts: nodeContexts, gwt },
       });
     } else {
       throw new Error(`Node "${node.id}" has unknown type "${node.type}".`);
@@ -258,5 +288,5 @@ export function parseBoardFile(raw: string): ParsedBoard {
       ? flow.viewport
       : null;
 
-  return { nodes: ordered, edges, viewport, contexts };
+  return { nodes: ordered, edges, viewport, contexts, customTypes };
 }

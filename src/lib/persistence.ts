@@ -1,5 +1,5 @@
 import type { Viewport } from '@xyflow/react';
-import type { BoardEdge, BoardNode } from '../types';
+import type { BoardEdge, BoardNode, CustomType } from '../types';
 import { parseBoardFile, type ParsedBoard } from './serialization';
 
 /**
@@ -14,6 +14,7 @@ export interface PersistedBoard {
   edges: BoardEdge[];
   viewport: Viewport | null;
   contexts: string[];
+  customTypes: CustomType[];
 }
 
 /** Writes the board to localStorage; silently ignores quota/unavailable storage. */

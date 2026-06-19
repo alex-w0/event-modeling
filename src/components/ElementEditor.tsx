@@ -1,10 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReactFlow } from '@xyflow/react';
-import type { BoardEdge, BoardNode, CqrsKind, GwtData } from '../types';
-import { ELEMENT_STYLES, GWT_REF_KINDS, buildGwtSections, emptyGwt, isCqrsKind, isMeaningfulGwtItem } from '../types';
+import type { Attribute, BoardEdge, BoardNode, CqrsKind, GwtData } from '../types';
+import {
+  ELEMENT_STYLES,
+  GWT_REF_KINDS,
+  buildGwtSections,
+  emptyGwt,
+  isAttributeKind,
+  isCqrsKind,
+  isMeaningfulGwtItem,
+} from '../types';
 import { contextTagClass, contextsOf } from '../lib/contexts';
 import { useBoardContexts } from './ContextsContext';
 import GwtEditor, { type GwtRefOption } from './GwtEditor';
+import AttributeEditor from './AttributeEditor';
 
 /** Ensures all three sections exist when editing a (possibly partial) scenario. */
 function normalizeGwt(value: GwtData | undefined): GwtData {
@@ -32,7 +41,8 @@ export default function ElementEditor({ nodeId, onClose }: ElementEditorProps) {
   const { contexts } = useBoardContexts();
   const node = getNode(nodeId);
   const [label, setLabel] = useState(node?.data.label ?? '');
-  const [content, setContent] = useState(node?.data.content ?? '');
+  const [note, setNote] = useState(node?.data.note ?? '');
+  const [attributes, setAttributes] = useState<Attribute[]>(node?.data.attributes ?? []);
   const [assigned, setAssigned] = useState<Set<string>>(
     () => new Set(node ? contextsOf(node.data).filter((c) => contexts.includes(c)) : []),
   );
@@ -75,13 +85,16 @@ export default function ElementEditor({ nodeId, onClose }: ElementEditorProps) {
 
   const save = () => {
     const trimmedLabel = label.trim();
-    const trimmedContent = content.trim();
+    const trimmedNote = note.trim();
     updateNodeData(nodeId, {
       label: trimmedLabel.length > 0 ? trimmedLabel : style.defaultLabel,
       ...(node.type === 'gwt'
         ? { gwt: cleanGwt(gwt) }
         : {
-            content: trimmedContent.length > 0 ? trimmedContent : undefined,
+            note: trimmedNote.length > 0 ? trimmedNote : undefined,
+            ...(isAttributeKind(node.type)
+              ? { attributes: attributes.filter((attr) => attr.name.trim().length > 0) }
+              : {}),
             ...(node.type === 'event' ? { contexts: contexts.filter((c) => assigned.has(c)) } : {}),
           }),
     });
@@ -160,14 +173,23 @@ export default function ElementEditor({ nodeId, onClose }: ElementEditorProps) {
               </div>
             )}
 
+            {isAttributeKind(node.type) && (
+              <div className="mt-3">
+                <span className="block text-xs font-medium text-slate-400">Attributes</span>
+                <div className="mt-1">
+                  <AttributeEditor value={attributes} onChange={setAttributes} />
+                </div>
+              </div>
+            )}
+
             <label className="mt-3 block text-xs font-medium text-slate-400">
-              Attributes — one per line
+              Note
               <textarea
-                value={content}
-                rows={8}
-                placeholder={'e.g.\nproductId: Uuid\nquantity: Int'}
-                className="mt-1 w-full resize-y rounded-md border border-slate-700 bg-slate-800 px-2.5 py-1.5 font-mono text-xs leading-relaxed text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-400"
-                onChange={(event) => setContent(event.target.value)}
+                value={note}
+                rows={4}
+                placeholder="Optional free-text note"
+                className="mt-1 w-full resize-y rounded-md border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs leading-relaxed text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-400"
+                onChange={(event) => setNote(event.target.value)}
                 onKeyDown={(event) => {
                   event.stopPropagation();
                   if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) save();

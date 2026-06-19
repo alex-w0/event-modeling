@@ -24,6 +24,7 @@ import {
 import Palette from './components/Palette';
 import Toolbar from './components/Toolbar';
 import { useBoardContexts } from './components/ContextsContext';
+import { useBoardTypes } from './components/TypesContext';
 import { useDnD } from './components/DnDContext';
 import { useDialog } from './components/Dialog';
 import { useSetDropHighlight, type CellHighlight } from './components/DropHighlightContext';
@@ -118,6 +119,7 @@ export default function Board() {
   >();
   const [dragKind, setDragKind] = useDnD();
   const { contexts, activeContexts, replaceContexts } = useBoardContexts();
+  const { customTypes, replaceSchema } = useBoardTypes();
   const setDropHighlight = useSetDropHighlight();
   const dialog = useDialog();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -151,10 +153,10 @@ export default function Board() {
   // React Flow at save time so pan/zoom is restored too.
   useEffect(() => {
     const handle = setTimeout(() => {
-      saveBoard({ nodes, edges, contexts, viewport: toObject().viewport });
+      saveBoard({ nodes, edges, contexts, customTypes, viewport: toObject().viewport });
     }, 300);
     return () => clearTimeout(handle);
-  }, [nodes, edges, contexts, toObject]);
+  }, [nodes, edges, contexts, customTypes, toObject]);
 
   // Dimming: an active flow trace spotlights its nodes — and since the trace
   // excludes context-dimmed nodes, those stay dimmed too; otherwise dim
@@ -452,8 +454,8 @@ export default function Board() {
   // --- JSON import / export -----------------------------------------------------
 
   const onExport = useCallback(() => {
-    downloadBoard(toObject(), contexts);
-  }, [toObject, contexts]);
+    downloadBoard(toObject(), contexts, customTypes);
+  }, [toObject, contexts, customTypes]);
 
   const onImportClick = useCallback(() => {
     fileInputRef.current?.click();
@@ -473,6 +475,7 @@ export default function Board() {
             edges: importedEdges,
             viewport,
             contexts: importedContexts,
+            customTypes: importedCustomTypes,
           } = parseBoardFile(String(reader.result));
           // Drop the autosave first so a partially-applied import can't leave
           // stale data behind; the autosave effect re-persists the imported
@@ -481,6 +484,7 @@ export default function Board() {
           setNodes(importedNodes);
           setEdges(importedEdges);
           replaceContexts(importedContexts);
+          replaceSchema(importedCustomTypes);
           if (viewport) void setViewport(viewport);
         } catch (error) {
           void dialog.alert({
@@ -493,7 +497,7 @@ export default function Board() {
         void dialog.alert({ title: 'Import failed', message: 'The file could not be read.' });
       reader.readAsText(file);
     },
-    [setNodes, setEdges, replaceContexts, setViewport, dialog],
+    [setNodes, setEdges, replaceContexts, replaceSchema, setViewport, dialog],
   );
 
   const onClear = useCallback(async () => {
@@ -507,8 +511,9 @@ export default function Board() {
       setNodes([]);
       setEdges([]);
       replaceContexts([DEFAULT_CONTEXT]);
+      replaceSchema([]);
     }
-  }, [dialog, setNodes, setEdges, replaceContexts]);
+  }, [dialog, setNodes, setEdges, replaceContexts, replaceSchema]);
 
   return (
     <HighlightDimProvider value={dimmedIds}>

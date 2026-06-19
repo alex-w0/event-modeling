@@ -2,8 +2,10 @@ import { memo, useLayoutEffect, useRef, useState } from 'react';
 import { Handle, Position, useReactFlow, type NodeProps } from '@xyflow/react';
 import { LayoutTemplate, Pencil, Play, Square, X } from 'lucide-react';
 import type { BoardNode } from '../types';
-import { ELEMENT_STYLES, SLOTTED_NODE_HEIGHT, emptyGwt, isCqrsKind } from '../types';
+import { ELEMENT_STYLES, SLOTTED_NODE_HEIGHT, emptyGwt, isAttributeKind, isCqrsKind } from '../types';
 import GwtNodeBody from './GwtNodeBody';
+import AttributesNodeBody from './AttributesNodeBody';
+import { useBoardTypes } from '../components/TypesContext';
 import WireframePreview from '../components/wireframe/WireframePreview';
 import { contextTagClass, contextsOf } from '../lib/contexts';
 import { useBoardContexts } from '../components/ContextsContext';
@@ -43,7 +45,11 @@ function CqrsNode({ id, type, data, selected, parentId, dragging }: NodeProps<Bo
 
   const style = isCqrsKind(type) ? ELEMENT_STYLES[type] : ELEMENT_STYLES.command;
   const Icon = style.icon;
-  const contentLines = (data.content ?? '').split('\n').filter((line) => line.trim().length > 0);
+  const noteLines = (data.note ?? '').split('\n').filter((line) => line.trim().length > 0);
+  const attributes = isAttributeKind(type) ? (data.attributes ?? []) : [];
+  // Custom-type renames change attribute labels; subscribing here keeps the
+  // overflow recompute below in sync with the live registry.
+  const { customTypes } = useBoardTypes();
 
   // DCB contexts: events show their context tags (only meaningful once a
   // second context exists). Dimming is decided board-wide in lib/highlight.ts
@@ -94,7 +100,7 @@ function CqrsNode({ id, type, data, selected, parentId, dragging }: NodeProps<Bo
       (line) => line.offsetTop + line.offsetHeight - body.offsetTop > available + 1,
     ).length;
     setOverflowHint(hiddenLines > 0 ? `+${hiddenLines} more…` : '…');
-  }, [slotted, data.label, data.content, data.wireframe, data.contexts, data.gwt, boardContexts.length]);
+  }, [slotted, data.label, data.note, data.attributes, data.wireframe, data.contexts, data.gwt, boardContexts.length, customTypes]);
 
   let cardSize = '';
   let bodyClip = '';
@@ -214,9 +220,10 @@ function CqrsNode({ id, type, data, selected, parentId, dragging }: NodeProps<Bo
                   <WireframePreview wireframe={data.wireframe} className="block h-16 w-full" />
                 </div>
               )}
-              {contentLines.length > 0 && (
-                <ul className="mt-1.5 space-y-0.5 border-t border-black/15 pt-1.5 font-mono text-[10px] leading-tight opacity-80">
-                  {contentLines.map((line, index) => (
+              {attributes.length > 0 && <AttributesNodeBody attributes={attributes} />}
+              {noteLines.length > 0 && (
+                <ul className="mt-1.5 space-y-0.5 border-t border-black/15 pt-1.5 text-[10px] leading-tight opacity-80">
+                  {noteLines.map((line, index) => (
                     <li key={index} className="break-words">
                       {line}
                     </li>

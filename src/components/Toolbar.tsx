@@ -1,6 +1,7 @@
 import { useReactFlow } from '@xyflow/react';
-import { Download, Maximize, Trash2, Upload, ZoomIn, ZoomOut } from 'lucide-react';
+import { Boxes, Download, Maximize, Trash2, Upload, ZoomIn, ZoomOut } from 'lucide-react';
 import ContextsMenu from './ContextsMenu';
+import { useBoardTypes } from './TypesContext';
 
 interface ToolbarProps {
   onExport: () => void;
@@ -13,6 +14,7 @@ const BUTTON =
 
 export default function Toolbar({ onExport, onImport, onClear }: ToolbarProps) {
   const { zoomIn, zoomOut, fitView } = useReactFlow();
+  const { openManager } = useBoardTypes();
 
   return (
     <div className="flex items-center gap-0.5 rounded-xl border border-slate-700 bg-slate-900/90 p-1.5 shadow-xl shadow-black/40 backdrop-blur">
@@ -32,6 +34,10 @@ export default function Toolbar({ onExport, onImport, onClear }: ToolbarProps) {
         Fit View
       </button>
       <ContextsMenu />
+      <button type="button" className={BUTTON} title="Manage types" onClick={openManager}>
+        <Boxes size={15} />
+        Types
+      </button>
 
       <div className="mx-1 h-5 w-px bg-slate-700" />
 

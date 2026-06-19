@@ -62,10 +62,54 @@ export type GwtSection = 'given' | 'when' | 'then';
 /** GWT only: the ordered items of each scenario section. */
 export type GwtData = Record<GwtSection, GwtItem[]>;
 
+/** Built-in scalar value types offered in the attribute type picker; the board list is editable. */
+export const BUILTIN_PRIMITIVES = ['String', 'Int', 'Bool', 'Date', 'Uuid', 'Decimal'];
+
+/**
+ * A leaf type: a primitive (by name) or a reference to a board-level custom
+ * object type (by id). Like a GWT reference, an object ref caches the target's
+ * `name` as a snapshot — refreshed when the type is picked and when it is
+ * deleted — so a dangling reference still shows what it pointed at.
+ */
+export type ScalarType =
+  | { kind: 'primitive'; name: string }
+  | { kind: 'object'; ref: string; name?: string }; // ref → CustomType.id
+
+/** An attribute's type: a scalar, or a single-level array of a scalar (no nested arrays). */
+export type AttributeType = ScalarType | { kind: 'array'; of: ScalarType };
+
+/** One typed attribute of an element or a custom type. */
+export interface Attribute {
+  name: string;
+  type: AttributeType;
+}
+
+/**
+ * A named, reusable structure available across all elements — how nesting is
+ * expressed: a nested shape is promoted to a named type and referenced by id,
+ * so it's defined once. Its fields are themselves attributes, so depth is
+ * unbounded through references (a type may reference other custom types).
+ */
+export interface CustomType {
+  id: string; // 'type_xxxxxxxx', minted like node ids
+  name: string; // 'LineItem', 'Address'
+  attributes: Attribute[];
+}
+
+/** Element kinds that carry structured attributes (query = read model). */
+export const ATTRIBUTE_KINDS: CqrsKind[] = ['command', 'event', 'readmodel'];
+
+/** Whether an element kind carries structured attributes. */
+export function isAttributeKind(type: string | undefined): boolean {
+  return type !== undefined && (ATTRIBUTE_KINDS as string[]).includes(type);
+}
+
 export interface BoardNodeData {
   label: string;
-  /** Optional body text for CQRS elements — e.g. command/event attributes, one per line. */
-  content?: string;
+  /** Free-text note shown below the attributes/title on any CQRS element. */
+  note?: string;
+  /** Structured, typed attributes for command/event/read-model elements. */
+  attributes?: Attribute[];
   /** Screen only: the wireframe mockup shown below the title. */
   wireframe?: Wireframe;
   /** Event only: DCB bounded contexts this event belongs to; undefined means ['default']. */
