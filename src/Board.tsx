@@ -30,11 +30,13 @@ import { useDialog } from './components/Dialog';
 import { useSetDropHighlight, type CellHighlight } from './components/DropHighlightContext';
 import { TracedNodesProvider, useFlowTrace } from './components/FlowTraceContext';
 import { HighlightDimProvider } from './components/HighlightDimContext';
+import { CloneProvider } from './components/CloneContext';
 import { nodeTypes } from './nodes';
 import { DEFAULT_CONTEXT } from './lib/contexts';
 import { downloadBoard, parseBoardFile } from './lib/serialization';
 import { clearBoard, loadBoard, saveBoard } from './lib/persistence';
 import { computeDimmedIds, computeDownstream } from './lib/highlight';
+import { cloneSelection } from './lib/clone';
 import { nextId } from './lib/id';
 import {
   cellAt,
@@ -113,7 +115,7 @@ export default function Board() {
   const persisted = useMemo(loadBoard, []);
   const [nodes, setNodes, onNodesChange] = useNodesState<BoardNode>(persisted?.nodes ?? initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<BoardEdge>(persisted?.edges ?? initialEdges);
-  const { screenToFlowPosition, getNodes, getInternalNode, setViewport, toObject } = useReactFlow<
+  const { screenToFlowPosition, getNodes, getEdges, getInternalNode, setViewport, toObject } = useReactFlow<
     BoardNode,
     BoardEdge
   >();
@@ -126,6 +128,10 @@ export default function Board() {
   const clickAddCount = useRef(0);
   /** Positions at drag start, so a drop on an occupied cell can revert. */
   const dragOrigins = useRef(new Map<string, XYPosition>());
+  /** In-app copy buffer (Cmd/Ctrl+C) — a self-contained snapshot, immune to later edits. */
+  const clipboard = useRef<{ nodes: BoardNode[]; edges: BoardEdge[] }>({ nodes: [], edges: [] });
+  /** Successive pastes of the same buffer fan out instead of stacking. */
+  const pasteCount = useRef(0);
 
   // Flow trace (play button): the origin plus everything downstream pulses,
   // traced arrows animate, and the rest of the board is spotlight-dimmed.
@@ -451,6 +457,79 @@ export default function Board() {
     [setNodes],
   );
 
+  // --- Clone / copy-paste -------------------------------------------------------
+
+  /** Drops the selection flag, reusing the same node object when already unselected. */
+  const deselect = useCallback((node: BoardNode): BoardNode => (node.selected ? { ...node, selected: false } : node), []);
+
+  /** The selection expanded to include every child of a selected slice, deep-copied. */
+  const snapshotSelection = useCallback((): { nodes: BoardNode[]; edges: BoardEdge[] } => {
+    const all = getNodes();
+    const selectedIds = new Set(all.filter((node) => node.selected).map((node) => node.id));
+    const selectedSlices = new Set(
+      all.filter((node) => node.type === 'slice' && selectedIds.has(node.id)).map((node) => node.id),
+    );
+    const nodes = all.filter(
+      (node) => selectedIds.has(node.id) || (node.parentId !== undefined && selectedSlices.has(node.parentId)),
+    );
+    const ids = new Set(nodes.map((node) => node.id));
+    const edges = getEdges().filter((edge) => ids.has(edge.source) && ids.has(edge.target));
+    return { nodes: structuredClone(nodes), edges: structuredClone(edges) };
+  }, [getNodes, getEdges]);
+
+  /** Merges freshly cloned nodes (selected) and their internal edges into the board. */
+  const applyClone = useCallback(
+    (clone: { nodes: BoardNode[]; edges: BoardEdge[] }) => {
+      if (clone.nodes.length === 0) return;
+      setNodes((nds) => slicesFirst([...nds.map(deselect), ...clone.nodes]));
+      if (clone.edges.length > 0) setEdges((eds) => [...eds, ...clone.edges]);
+    },
+    [setNodes, setEdges, deselect],
+  );
+
+  // Instant duplicate, used by the per-node copy buttons (source === the live board).
+  const duplicateNodes = useCallback(
+    (ids: string[]) => {
+      const nodes = getNodes();
+      applyClone(cloneSelection(ids, nodes, getEdges(), nodes));
+    },
+    [getNodes, getEdges, applyClone],
+  );
+
+  // Keyboard copy/paste into an in-app buffer. Skipped while typing so the
+  // element-editor fields keep native text copy/paste.
+  useEffect(() => {
+    const isTyping = () => {
+      const el = document.activeElement;
+      if (!(el instanceof HTMLElement)) return false;
+      return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable;
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+      const key = event.key.toLowerCase();
+      if (key !== 'c' && key !== 'v') return;
+      if (isTyping()) return;
+
+      if (key === 'c') {
+        const snapshot = snapshotSelection();
+        if (snapshot.nodes.length === 0) return;
+        clipboard.current = snapshot;
+        pasteCount.current = 0;
+        event.preventDefault();
+        return;
+      }
+      // paste
+      const buffer = clipboard.current;
+      if (buffer.nodes.length === 0) return;
+      event.preventDefault();
+      pasteCount.current += 1;
+      const ids = buffer.nodes.map((node) => node.id);
+      applyClone(cloneSelection(ids, buffer.nodes, buffer.edges, getNodes(), pasteCount.current));
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [snapshotSelection, applyClone, getNodes]);
+
   // --- JSON import / export -----------------------------------------------------
 
   const onExport = useCallback(() => {
@@ -518,6 +597,7 @@ export default function Board() {
   return (
     <HighlightDimProvider value={dimmedIds}>
       <TracedNodesProvider value={tracedIds}>
+        <CloneProvider value={duplicateNodes}>
         <ReactFlow<BoardNode, BoardEdge>
           nodes={nodes}
           edges={displayEdges}
@@ -586,6 +666,7 @@ export default function Board() {
             onChange={onImportFile}
           />
         </ReactFlow>
+        </CloneProvider>
       </TracedNodesProvider>
     </HighlightDimProvider>
   );

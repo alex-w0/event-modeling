@@ -1,6 +1,6 @@
 import { memo, useLayoutEffect, useRef, useState } from 'react';
 import { Handle, Position, useReactFlow, type NodeProps } from '@xyflow/react';
-import { LayoutTemplate, Pencil, Play, Square, X } from 'lucide-react';
+import { Copy, LayoutTemplate, Pencil, Play, Square, X } from 'lucide-react';
 import type { BoardNode } from '../types';
 import { ELEMENT_STYLES, SLOTTED_NODE_HEIGHT, emptyGwt, isAttributeKind, isCqrsKind } from '../types';
 import GwtNodeBody from './GwtNodeBody';
@@ -13,6 +13,7 @@ import { useFlowTrace, useTracedNodes } from '../components/FlowTraceContext';
 import { useDimmedNodes } from '../components/HighlightDimContext';
 import { useOpenElementEditor } from '../components/ElementEditorContext';
 import { useOpenWireframeEditor } from '../components/wireframe/WireframeEditorContext';
+import { useDuplicateNodes } from '../components/CloneContext';
 
 const HANDLES: { id: string; position: Position }[] = [
   { id: 'top', position: Position.Top },
@@ -42,6 +43,7 @@ function CqrsNode({ id, type, data, selected, parentId, dragging }: NodeProps<Bo
   const { contexts: boardContexts } = useBoardContexts();
   const openElementEditor = useOpenElementEditor();
   const openWireframeEditor = useOpenWireframeEditor();
+  const duplicateNodes = useDuplicateNodes();
 
   const style = isCqrsKind(type) ? ELEMENT_STYLES[type] : ELEMENT_STYLES.command;
   const Icon = style.icon;
@@ -182,6 +184,18 @@ function CqrsNode({ id, type, data, selected, parentId, dragging }: NodeProps<Bo
                 <LayoutTemplate size={12} />
               </button>
             )}
+            <button
+              type="button"
+              title="Duplicate element"
+              aria-label="Duplicate element"
+              className="nodrag rounded p-0.5 hover:bg-black/20"
+              onClick={(event) => {
+                event.stopPropagation();
+                duplicateNodes([id]);
+              }}
+            >
+              <Copy size={12} />
+            </button>
             <button
               type="button"
               title="Delete element"

@@ -1,11 +1,12 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { useReactFlow, type NodeProps } from '@xyflow/react';
-import { GripHorizontal, Plus, X } from 'lucide-react';
+import { Copy, GripHorizontal, Plus, X } from 'lucide-react';
 import type { BoardNode } from '../types';
 import { CELL_HEIGHT, CELL_WIDTH, DEFAULT_COLUMNS, DEFAULT_LANES, LANE_GUTTER } from '../types';
 import { sliceHeight, sliceWidth } from '../lib/grid';
 import { useDialog } from '../components/Dialog';
 import { useDropHighlight } from '../components/DropHighlightContext';
+import { useDuplicateNodes } from '../components/CloneContext';
 
 /**
  * A "slice" rendered as a grid table: swimlane rows (Actor, Interaction,
@@ -19,6 +20,7 @@ import { useDropHighlight } from '../components/DropHighlightContext';
  */
 function SliceNode({ id, data, selected }: NodeProps<BoardNode>) {
   const { updateNode, updateNodeData, deleteElements } = useReactFlow();
+  const duplicateNodes = useDuplicateNodes();
   const dialog = useDialog();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(data.label);
@@ -106,9 +108,23 @@ function SliceNode({ id, data, selected }: NodeProps<BoardNode>) {
         )}
         <button
           type="button"
+          title="Duplicate slice (and its contents)"
+          aria-label="Duplicate slice"
+          className={`nodrag ml-auto rounded p-1 text-slate-400 transition-opacity hover:bg-slate-600 hover:text-slate-100 ${
+            selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+          }`}
+          onClick={(event) => {
+            event.stopPropagation();
+            duplicateNodes([id]);
+          }}
+        >
+          <Copy size={14} />
+        </button>
+        <button
+          type="button"
           title="Delete slice (and its contents)"
           aria-label="Delete slice"
-          className={`nodrag ml-auto rounded p-1 text-slate-400 transition-opacity hover:bg-slate-600 hover:text-red-300 ${
+          className={`nodrag rounded p-1 text-slate-400 transition-opacity hover:bg-slate-600 hover:text-red-300 ${
             selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
           }`}
           onClick={(event) => {
